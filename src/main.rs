@@ -9,6 +9,40 @@ use opcua::{
     },
 };
 
+async fn discover_servers(discovery_url: &str) -> Result<Vec<String>, StatusCode> {
+    println!(
+        "Attempting to connect to discovery server {} ...",
+        discovery_url
+    );
+    let mut client = opcua::client::Client::new(opcua::client::ClientConfig::new(
+        "DiscoveryClient",
+        "urn:DiscoveryClient",
+    ));
+    match client.find_servers(discovery_url).await {
+        Ok(servers) => {
+            println!("Discovery server responded with {} servers:", servers.len());
+            let mut discovered_servers = Vec::new();
+            for server in servers {
+                println!("Server: {}", server.application_name);
+                if let Some(ref discovery_urls) = server.discovery_urls {
+                    for url in discovery_urls {
+                        println!("  Discovery URL: {}", url);
+                        // Convert UAString to String
+                        discovered_servers.push(url.as_ref().to_string());
+                    }
+                } else {
+                    println!("  No discovery URLs for this server");
+                }
+            }
+            Ok(discovered_servers)
+        }
+        Err(err) => {
+            println!("ERROR: Cannot find servers on discovery server: {:?}", err);
+            Err(err)
+        }
+    }
+}
+
 fn values(data_value: &DataValue, item: &MonitoredItem) {
     let node_id = &item.item_to_monitor().node_id;
     if let Some(ref value) = data_value.value {
@@ -52,40 +86,45 @@ async fn subscription(session: Arc<Session>, ns: u16) -> Result<(), StatusCode> 
 
 #[tokio::main]
 async fn main() {
-    let server_url = "opc.tcp://localhost:4840";
-    let mut client = ClientBuilder::new()
-        .application_name("Simple Client")
-        .application_uri("urn:SimpleClient")
-        .product_uri("urn:SimpleClient")
-        .trust_server_certs(true)
-        .create_sample_keypair(true)
-        .session_timeout(5)
-        .client()
-        .unwrap();
-    let (session, event_loop) = client
-        .new_session_from_endpoint(
-            (
-                server_url.as_ref(),
-                SecurityPolicy::None.to_str(),
-                MessageSecurityMode::None,
-                UserTokenPolicy::anonymous(),
-            ),
-            IdentityToken::Anonymous,
-        )
-        .await
-        .unwrap();
-    let handler = event_loop.spawn();
-    session.wait_for_connection().await;
-
-    // PubSub Connection to retrieve Values
-    //
-    if let Err(result) = subscription(session.clone(), 2).await {
-        println!(
-            "ERROR: Got an error while subscribing to variables - {}",
-            result
-        );
-        let _ = session.disconnect().await;
+    // let server_url = "opc.tcp://localhost:4840";
+    let discover_server = "opc.tpc://localhost:4840";
+    match discover_servers(discover_server).await {
+        Ok(servers) if !servers.is_empty() => {
+            let server_url = servers[0].clone();
+            let mut client = ClientBuilder::new()
+                .application_name("Simple Client")
+                .application_uri("urn:SimpleClient")
+                .product_uri("urn:SimpleClient")
+                .trust_server_certs(true)
+                .create_sample_keypair(true)
+                .session_timeout(5)
+                .client()
+                .unwrap();
+            let (session, event_loop) = client
+                .new_session_from_endpoint(
+                    (
+                        server_url.as_ref(),
+                        SecurityPolicy::None.to_str(),
+                        MessageSecurityMode::None,
+                        UserTokenPolicy::anonymous(),
+                    ),
+                    IdentityToken::Anonymous,
+                )
+                .await
+                .unwrap();
+            let handler = event_loop.spawn();
+            session.wait_for_connection().await;
+            if let Err(result) = subscription(session.clone(), 2).await {
+                println!("Error, got an issue while Subscribing {}", result);
+                let _ = session.disconnect().await;
+            };
+            handler.await.unwrap();
+        }
+        Ok(_) => {
+            println!("No servers found at the discovery URL")
+        }
+        Err(err) => {
+            println!("Discovery Failed: {:?}", err);
+        }
     }
-
-    handler.await.unwrap();
 }
