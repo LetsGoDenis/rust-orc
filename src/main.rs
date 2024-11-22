@@ -14,14 +14,16 @@ async fn discover_servers(discovery_url: &str) -> Result<Vec<String>, StatusCode
         "Attempting to connect to discovery server {} ...",
         discovery_url
     );
+    // Create client to discover servers
     let mut client = opcua::client::Client::new(opcua::client::ClientConfig::new(
         "DiscoveryClient",
         "urn:DiscoveryClient",
     ));
+    // Function to find servers
     match client.find_servers(discovery_url).await {
         Ok(servers) => {
             println!("Discovery server responded with {} servers:", servers.len());
-            let mut discovered_servers = Vec::new();
+            let mut discovered_servers = Vec::new(); //Getting all servers
             for server in servers {
                 println!("Server: {}", server.application_name);
                 if let Some(ref discovery_urls) = server.discovery_urls {
@@ -45,6 +47,7 @@ async fn discover_servers(discovery_url: &str) -> Result<Vec<String>, StatusCode
 
 fn values(data_value: &DataValue, item: &MonitoredItem) {
     let node_id = &item.item_to_monitor().node_id;
+    // Printing values from servers
     if let Some(ref value) = data_value.value {
         println!("Item \"{}\", Value = {:?}", node_id, value);
     } else {
@@ -56,6 +59,7 @@ fn values(data_value: &DataValue, item: &MonitoredItem) {
     }
 }
 async fn subscription(session: Arc<Session>, ns: u16) -> Result<(), StatusCode> {
+    // getting SubscriptionID from server
     let subscription_id = session
         .create_subscription(
             Duration::from_secs(1),
@@ -86,7 +90,6 @@ async fn subscription(session: Arc<Session>, ns: u16) -> Result<(), StatusCode> 
 
 #[tokio::main]
 async fn main() {
-    // let server_url = "opc.tcp://localhost:4840";
     let discover_server = "opc.tpc://localhost:4840";
     match discover_servers(discover_server).await {
         Ok(servers) if !servers.is_empty() => {
