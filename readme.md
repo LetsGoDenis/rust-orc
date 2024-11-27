@@ -25,5 +25,5 @@ This project implements an OPC UA client in Rust that includes functionality for
 
 ### Clone the Repository
 ```bash
-git clone https://github.com/your-repo/opcua-client.git
+git clone https://github.com/LetsGoDenis/rust-orc.git
 cd opcua-client
